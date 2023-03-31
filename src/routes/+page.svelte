@@ -1,2 +1,10 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://kit.svelte.dev">kit.svelte.dev</a> to read the documentation</p>
+<h1>CREATE PSBT HOW TO?</h1>
+<a href="/wallet" class="btn btn-primary">Wallet</a>
+<h2>TODO:</h2>
+<ul>
+  <li class="line-through">Connect wallet (unisat)</li>
+  <li class="line-through">Get inscriptions showing</li>
+  <li>Create PSBT</li>
+  <li>Sign PSBT</li>
+  <li>Verify PSBT</li>
+</ul>
