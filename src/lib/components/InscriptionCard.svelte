@@ -15,7 +15,7 @@
         receiveAddress: inscription.owner,
         tapInternalKey: publicKey,
       });
-      const signed = signPSBT(psbtHex);
+      const signed = await signPSBT(psbtHex);
       await verifySignedPSBT(signed);
     }
   };

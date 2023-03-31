@@ -45,20 +45,20 @@ export const generateUnsignedPSBT = async (params: GeneratePSBTParams): Promise<
 
 export const verifySignedPSBT = async (signedPSBT: string) => {
   const psbt = bitcoin.Psbt.fromHex(signedPSBT, { network: bitcoin.networks.bitcoin });
-  psbt.finalizeTaprootInput(0)
-  psbt.finalizeAllInputs()
-  console.log(psbt.toBase64())
+  console.log(psbt.data.inputs)
+  // psbt.finalizeTaprootInput(0)
+  // psbt.finalizeAllInputs()
+
   psbt.data.inputs.forEach((input) => {
     if (input.tapInternalKey) {
       const finalScriptWitness = input.finalScriptWitness;
-
       if (finalScriptWitness && finalScriptWitness.length > 0) {
         if (finalScriptWitness.toString('hex') === '0141') {
           throw new Error(`Invalid signature - no taproot signature present on the finalScriptWitness`);
         }
+      } else {
+        throw new Error(`Invalid signature - no finalScriptWitness`)
       }
-    } else {
-      throw new Error(`Invalid signature - no finalScriptWitness`)
     }
   })
 
