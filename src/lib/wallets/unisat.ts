@@ -14,8 +14,7 @@ export const connectUnisat = async () => {
   }
 }
 
-export const signPSBT = async (psbt: string) => {
-  const resp = await window.unisat.signPsbt(psbt);
-  console.log(resp)
+export const signPSBT = async (psbtHex: string) => {
+  const resp = await window.unisat.signPsbt(psbtHex);
   return resp;
 }

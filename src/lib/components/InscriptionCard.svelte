@@ -1,22 +1,24 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { signPSBT } from "$lib/wallets/unisat";
   import type { Inscription } from "../interfaces";
-  import { generateUnsignedPSBT, verifySignedPSBT } from "../psbt";
+  import { generateUnsignedPSBT, psbtTransformer } from "../psbt";
 
   export let publicKey: string | null;
   export let inscription: Inscription;
-  let price: number = 0;
+  let price: number = 51000000;
 
   const sell = async () => {
     if (publicKey) {
       const psbtHex = await generateUnsignedPSBT({
         inscriptionId: inscription.id,
-        price: 10000,
+        price,
         receiveAddress: inscription.owner,
         tapInternalKey: publicKey,
       });
       const signed = await signPSBT(psbtHex);
-      await verifySignedPSBT(signed);
+      const b64 = encodeURIComponent(psbtTransformer.hexToBase64(signed));
+      goto(`/tx?psbt=${b64}`);
     }
   };
 </script>
