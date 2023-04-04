@@ -1,3 +1,4 @@
+import type { AddressTxsUtxo } from "@mempool/mempool.js/lib/interfaces/bitcoin/addresses";
 import type { Inscription } from "../interfaces";
 import { decodeOutpoint } from "../utils";
 
@@ -36,4 +37,21 @@ export const getInscriptionsForAddress = async (address: string) => {
     return inscriptions;
   }
   return [];
+}
+
+export const doesUtxoContainInscription = async (
+  inscriptionId: string,
+  utxo: AddressTxsUtxo
+): Promise<boolean> => {
+  // If it's confirmed, we check the outpoint of the inscription utxo
+  if (utxo.status.confirmed) {
+    try {
+      const inscriptionUTXO = await getUTXO(inscriptionId);
+      return inscriptionUTXO.txid === utxo.txid && inscriptionUTXO.index === utxo.vout;
+    } catch (err) {
+      return true; // if error, we pretend that the utxo contains an inscription for safety
+    }
+  }
+
+  throw new Error('UTXO not confirmed');
 }
