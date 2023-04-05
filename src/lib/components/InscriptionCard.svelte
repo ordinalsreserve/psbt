@@ -18,7 +18,7 @@
       });
       const signed = await signPSBT(psbtHex);
       const b64 = encodeURIComponent(psbtTransformer.hexToBase64(signed));
-      goto(`/tx?psbt=${b64}`);
+      goto(`/tx?psbt=${b64}&inscriptionId=${inscription.id}`);
     }
   };
 </script>

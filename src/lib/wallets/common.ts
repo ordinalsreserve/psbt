@@ -4,7 +4,7 @@ import type { Inscription, WalletStore } from "../interfaces";
 const initialState: WalletStore = {
   addresses: [],
   inscriptions: [],
-  publicKey: null
+  publicKey: ''
 }
 
 export const createWalletStore = () => {

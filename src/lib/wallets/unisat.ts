@@ -4,7 +4,7 @@ import { createWalletStore } from "./common"
 export const unisatWallet = createWalletStore();
 
 export const connectUnisat = async () => {
-  const addresses = await window.unisat.requestAccounts()
+  const addresses = await window.unisat.requestAccounts();
   unisatWallet.addAddresses(addresses)
   const publicKey = await window.unisat.getPublicKey();
   unisatWallet.setPublicKey(publicKey);
@@ -18,3 +18,4 @@ export const signPSBT = async (psbtHex: string) => {
   const resp = await window.unisat.signPsbt(psbtHex);
   return resp;
 }
+

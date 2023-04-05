@@ -1,30 +1,13 @@
 import * as bitcoin from 'bitcoinjs-lib';
-import { getTxHex } from './apis/mempool';
+import { getFees, getTxHex } from './apis/mempool';
 import { doesUtxoContainInscription, getUTXO } from './apis/turbo';
-import { calculateTxBytesFee, isP2SHAddress, mapUtxos, toXOnly } from './utils';
+import { calculateTxBytesFee, calculateTxBytesFeeWithRate, isP2SHAddress, mapUtxos, toXOnly } from './utils';
 import * as ecc from 'tiny-secp256k1';
 import type { AddressTxsUtxo } from '@mempool/mempool.js/lib/interfaces/bitcoin/addresses';
-import type { utxo } from './interfaces';
-import { DUMMY_UTXO_MAX_VALUE, DUMMY_UTXO_MIN_VALUE, DUMMY_UTXO_VALUE } from './constants';
+import type { FeeRates, GenerateBuyerPSBTParams, GenerateSellerPSBTParams, utxo, WitnessUtxo } from './interfaces';
+import { DUMMY_UTXO_MAX_VALUE, DUMMY_UTXO_MIN_VALUE, DUMMY_UTXO_VALUE, ORDINALS_POSTAGE_VALUE } from './constants';
 
 bitcoin.initEccLib(ecc);
-
-interface GenerateSellerPSBTParams {
-  inscriptionId: string;
-  tapInternalKey: string;
-  price: number;
-  receiveAddress: string;
-}
-
-interface GenerateBuyerPSBTParams {
-  // inscriptionId: string;
-  // tapInternalKey: string;
-  // price: number;
-  buyerAddress: string;
-  buyerOrdinalAddress: string;
-  dummyUTXOs: utxo[];
-  paymentUTXOs: utxo[];
-}
 
 export const psbtTransformer = {
   hexToBase64: (psbtHex: string) => bitcoin.Psbt.fromHex(psbtHex).toBase64(),
@@ -157,7 +140,7 @@ export const selectPaymentUTXOs = async (
   amount: number, // amount is expected total output (except tx fee)
   vinsLength: number,
   voutsLength: number,
-  feeRateTier: string
+  feeRateTier: FeeRates
 ) => {
   let selectedUtxos = [];
   let selectedAmount = 0;
@@ -216,6 +199,8 @@ export const getSellerInputAndOutput = async (psbt: bitcoin.Psbt) => {
 
 export const generateUnsignedBuyingPSBTBase64 = async (params: GenerateBuyerPSBTParams) => {
   const network = bitcoin.networks.bitcoin;
+  console.log('params for generate buying psbt', params)
+  const inscriptionOwningOutput = await getUTXO(params.inscriptionId);
   const psbt = new bitcoin.Psbt({ network });
   if (
     !params.buyerAddress ||
@@ -246,8 +231,6 @@ export const generateUnsignedBuyingPSBTBase64 = async (params: GenerateBuyerPSBT
 
     if (isP2SHAddress(params.buyerAddress, network)) {
       const redeemScript = bitcoin.payments.p2wpkh({
-        // bitcoin.address.fromBase58Check(params.buyerAddress),
-        // TODO GET PUB KEY FROM ADDRESS
         pubkey: Buffer.from(params.buyerPublicKey!, 'hex'),
       }).output;
       const p2sh = bitcoin.payments.p2sh({
@@ -270,27 +253,25 @@ export const generateUnsignedBuyingPSBTBase64 = async (params: GenerateBuyerPSBT
 
   // Add dummy output
   psbt.addOutput({
-    address: listing.buyer.buyerAddress,
+    address: params.buyerAddress,
     value:
-      listing.buyer.buyerDummyUTXOs[0].value +
-      listing.buyer.buyerDummyUTXOs[1].value +
-      Number(listing.seller.ordItem.location.split(':')[2]),
+      params.dummyUTXOs[0].value +
+      params.dummyUTXOs[1].value +
+      Number(inscriptionOwningOutput.txid.split(':')[2]),
   });
   // Add ordinal output
   psbt.addOutput({
-    address: listing.buyer.buyerTokenReceiveAddress,
+    address: params.buyerOrdinalAddress,
     value: ORDINALS_POSTAGE_VALUE,
   });
 
-  const { sellerInput, sellerOutput } = await getSellerInputAndOutput(
-    listing,
-  );
+  const { sellerInput, sellerOutput } = await getSellerInputAndOutput(params.sellerPSBT);
 
   psbt.addInput(sellerInput);
   psbt.addOutput(sellerOutput);
 
   // Add payment utxo inputs
-  for (const utxo of listing.buyer.buyerPaymentUTXOs) {
+  for (const utxo of params.paymentUTXOs) {
     const input: any = {
       hash: utxo.txid,
       index: utxo.vout,
@@ -300,9 +281,9 @@ export const generateUnsignedBuyingPSBTBase64 = async (params: GenerateBuyerPSBT
     const p2shInputWitnessUTXOUn: any = {};
     const p2shInputRedeemScriptUn: any = {};
 
-    if (isP2SHAddress(listing.buyer.buyerAddress, network)) {
+    if (isP2SHAddress(params.buyerAddress, network)) {
       const redeemScript = bitcoin.payments.p2wpkh({
-        pubkey: Buffer.from(listing.buyer.buyerPublicKey!, 'hex'),
+        pubkey: Buffer.from(params.buyerPublicKey, 'hex'),
       }).output;
       const p2sh = bitcoin.payments.p2sh({
         redeem: { output: redeemScript },
@@ -323,36 +304,38 @@ export const generateUnsignedBuyingPSBTBase64 = async (params: GenerateBuyerPSBT
     totalInput += utxo.value;
   }
 
-  // Create a platform fee output
-  let platformFeeValue = Math.floor(
-    (listing.seller.price *
-      (listing.buyer.takerFeeBp + listing.seller.makerFeeBp)) /
-      10000,
-  );
-  platformFeeValue =
-    platformFeeValue > DUMMY_UTXO_MIN_VALUE ? platformFeeValue : 0;
 
-  if (platformFeeValue > 0) {
-    psbt.addOutput({
-      address: PLATFORM_FEE_ADDRESS,
-      value: platformFeeValue,
-    });
-  }
+  // No platform fee 😱
+  // Create a platform fee output
+  // let platformFeeValue = Math.floor(
+  //   (params.price *
+  //     (listing.buyer.takerFeeBp + listing.seller.makerFeeBp)) /
+  //     10000,
+  // );
+  // platformFeeValue =
+  //   platformFeeValue > DUMMY_UTXO_MIN_VALUE ? platformFeeValue : 0;
+
+  // if (platformFeeValue > 0) {
+  //   psbt.addOutput({
+  //     address: PLATFORM_FEE_ADDRESS,
+  //     value: platformFeeValue,
+  //   });
+  // }
 
   // Create two new dummy utxo output for the next purchase
   psbt.addOutput({
-    address: listing.buyer.buyerAddress,
+    address: params.buyerAddress,
     value: DUMMY_UTXO_VALUE,
   });
   psbt.addOutput({
-    address: listing.buyer.buyerAddress,
+    address: params.buyerAddress,
     value: DUMMY_UTXO_VALUE,
   });
 
   const fee = await calculateTxBytesFee(
     psbt.txInputs.length,
     psbt.txOutputs.length, // already taken care of the exchange output bytes calculation
-    listing.buyer.feeRateTier,
+    params.feeRateTier,
   );
 
   const totalOutput = psbt.txOutputs.reduce(
@@ -363,20 +346,107 @@ export const generateUnsignedBuyingPSBTBase64 = async (params: GenerateBuyerPSBT
 
   if (changeValue < 0) {
     throw `Your wallet address doesn't have enough funds to buy this inscription.
-Price:      ${satToBtc(listing.seller.price)} BTC
-Required:   ${satToBtc(totalOutput + fee)} BTC
-Missing:    ${satToBtc(-changeValue)} BTC`;
+Price:      ?
+Required:   ${totalOutput + fee} sats
+Missing:    ${-changeValue} sats`;
   }
 
   // Change utxo
   if (changeValue > DUMMY_UTXO_MIN_VALUE) {
     psbt.addOutput({
-      address: listing.buyer.buyerAddress,
+      address: params.buyerAddress,
       value: changeValue,
     });
   }
 
-  listing.buyer.unsignedBuyingPSBTBase64 = psbt.toBase64();
-  listing.buyer.unsignedBuyingPSBTInputSize = psbt.data.inputs.length;
-  return listing;
+  return {
+    psbt: psbt.toBase64(),
+    inputSize: psbt.data.inputs.length
+  };
+}
+
+export async function generateUnsignedCreateDummyUtxoPSBTBase64(params: GenerateBuyerPSBTParams): Promise<string> {
+  const { feeRateTier, inscriptionId, buyerAddress, buyerPublicKey, unqualifiedUtxos } = params;
+  const psbt = new bitcoin.Psbt({ network: bitcoin.networks.bitcoin });
+  const [mappedUnqualifiedUtxos, recommendedFee] = await Promise.all([
+    mapUtxos(unqualifiedUtxos),
+    getFees(feeRateTier),
+  ]);
+
+  // Loop the unqualified utxos until we have enough to create a dummy utxo
+  let totalValue = 0;
+  let paymentUtxoCount = 0;
+  for (const utxo of mappedUnqualifiedUtxos) {
+    if (await doesUtxoContainInscription(inscriptionId, utxo)) {
+      continue;
+    }
+
+    const input: any = {
+      hash: utxo.txid,
+      index: utxo.vout,
+      nonWitnessUtxo: utxo.tx.toBuffer(),
+    };
+
+    if (isP2SHAddress(buyerAddress, bitcoin.networks.bitcoin)) {
+      const redeemScript = bitcoin.payments.p2wpkh({
+        pubkey: Buffer.from(buyerPublicKey!, 'hex'),
+      }).output;
+      const p2sh = bitcoin.payments.p2sh({
+        redeem: { output: redeemScript },
+      });
+      input.witnessUtxo = utxo.tx.outs[utxo.vout];
+      input.redeemScript = p2sh.redeem?.output;
+    }
+
+    psbt.addInput(input);
+    totalValue += utxo.value;
+    paymentUtxoCount += 1;
+
+    const fees = calculateTxBytesFeeWithRate(
+      paymentUtxoCount,
+      2, // 2-dummy outputs
+      recommendedFee,
+    );
+    if (totalValue >= DUMMY_UTXO_VALUE * 2 + fees) {
+      break;
+    }
+  }
+
+  const finalFees = calculateTxBytesFeeWithRate(
+    paymentUtxoCount,
+    2, // 2-dummy outputs
+    recommendedFee,
+  );
+
+  const changeValue = totalValue - DUMMY_UTXO_VALUE * 2 - finalFees;
+  
+  // We must have enough value to create a dummy utxo and pay for tx fees
+  if (changeValue < 0) {
+    console.log()
+    throw new Error(
+      `You might have pending transactions or not enough fund
+totalCost: ${totalValue} sats
+dummyUTXOValue: ${DUMMY_UTXO_VALUE * 2} sats
+finalFees: ${finalFees}`,
+    );
+  }
+
+  psbt.addOutput({
+    address: buyerAddress,
+    value: DUMMY_UTXO_VALUE,
+  });
+  psbt.addOutput({
+    address: buyerAddress,
+    value: DUMMY_UTXO_VALUE,
+  });
+
+  // to avoid dust
+  if (changeValue > DUMMY_UTXO_MIN_VALUE) {
+    psbt.addOutput({
+      address: buyerAddress,
+      value: changeValue,
+    });
+  }
+
+  return psbt.toBase64();
 }

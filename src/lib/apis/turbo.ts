@@ -6,6 +6,9 @@ const BASE_URL = 'https://turbo.ordinalswallet.com';
 const ORDINALS_RESERVE_BASE_URL = 'https://ordinalsreserve.com';
 
 export const getUTXO = async (id: string) => {
+  if (!id) {
+    throw new Error('Inscription ID required')
+  }
   const resp = await fetch(`${BASE_URL}/inscription/${id}/outpoint`);
   if (resp.status === 200) {
     const data = await resp.json();

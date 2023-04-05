@@ -1,6 +1,6 @@
 import type { AddressTxsUtxo } from '@mempool/mempool.js/lib/interfaces/bitcoin/addresses';
 import { Buffer } from 'buffer/';
-import type { utxo } from './interfaces';
+import type { FeeRates, utxo } from './interfaces';
 import * as bitcoin from "bitcoinjs-lib";
 import { getFees, getTxHex } from './apis/mempool';
 
@@ -22,6 +22,7 @@ export const toXOnly = (pubKey: Buffer) =>
 export async function mapUtxos(
   utxosFromMempool: AddressTxsUtxo[],
 ): Promise<utxo[]> {
+  console.error(utxosFromMempool)
   const ret: utxo[] = [];
   for (const utxoFromMempool of utxosFromMempool) {
     ret.push({
@@ -38,7 +39,7 @@ export async function mapUtxos(
 export async function calculateTxBytesFee(
   vinsLength: number,
   voutsLength: number,
-  feeRateTier: string,
+  feeRateTier: FeeRates,
   includeChangeOutput: 0 | 1 = 1,
 ) {
   const recommendedFeeRate = await getFees(feeRateTier);
